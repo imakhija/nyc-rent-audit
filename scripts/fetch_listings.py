@@ -3,12 +3,14 @@ import requests
 from dotenv import load_dotenv
 import time
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 import json
 import glob
-from dateutil.relativedelta import relativedelta
 
-BASE_URL = "https://api.rentcast.io/v1/listings/rental/long-term"
-OUTPUT_DIR = "data/raw"
+API_BASE_URL = "https://api.rentcast.io/v1/listings/rental/long-term"
+LISTINGS_OUTPUT_DIR = "data/raw"
+FETCH_METADATA = "data/.fetch_history.json"
+
 MAX_REQUESTS = 50
 PAGE_SIZE = 500
 REQUEST_DELAY = 1
@@ -19,9 +21,10 @@ def load_api_key():
 
     if not api_key:
         raise ValueError("The RentCast API key is not set in .env")
+    
     return api_key
 
-def fetch_listings(api_key, offset, status="Active", include_total=False):
+def fetch_page(api_key, offset, status="Active", include_total=False):
     params = {
         "city": "New York",
         "state": "NY",
@@ -31,15 +34,15 @@ def fetch_listings(api_key, offset, status="Active", include_total=False):
         "offset": offset,
     }
 
-    if include_total:
-        params["includeTotalCount"] = "true"
-
     headers = {
         "accept": "application/json",
         "X-Api-Key": api_key
     }
 
-    response = requests.get(BASE_URL, headers=headers, params=params)
+    if include_total:
+        params["includeTotalCount"] = "true"
+
+    response = requests.get(API_BASE_URL, headers=headers, params=params)
     response.raise_for_status()
 
     total_count = None
@@ -48,7 +51,7 @@ def fetch_listings(api_key, offset, status="Active", include_total=False):
     
     return response.json(), total_count
 
-def fetch_by_status(api_key, status, requests_used):
+def fetch_all(api_key, status, requests_used):
     listings = []
     requests_remaining = MAX_REQUESTS - requests_used
     
@@ -59,7 +62,7 @@ def fetch_by_status(api_key, status, requests_used):
     print(f"Fetching {status.lower()} listings...")
 
     # initial request to get total count
-    data, total_count = fetch_listings(api_key, offset=0, status=status, include_total=True)
+    data, total_count = fetch_page(api_key, offset=0, status=status, include_total=True)
     listings.extend(data)
     requests_made = 1
 
@@ -80,7 +83,7 @@ def fetch_by_status(api_key, status, requests_used):
         print(f"Fetching offset {offset}...")
         time.sleep(REQUEST_DELAY)
         
-        data, _ = fetch_listings(api_key, offset=offset, status=status)
+        data, _ = fetch_page(api_key, offset=offset, status=status)
         
         if not data:
             print("No more listings found.")
@@ -96,31 +99,44 @@ def fetch_by_status(api_key, status, requests_used):
     return listings, requests_made
 
 def save_listings(listings, status="Active"):
-    date = datetime.now().strftime("%Y-%m-%d")
-    filename = f"raw_{status.lower()}_listings_{date}.json"
-    filepath = os.path.join(OUTPUT_DIR, filename)
+    date = datetime.now().strftime("%Y-%m")
+    filename = f"{status.lower()}_listings_{date}.json"
+    filepath = os.path.join(LISTINGS_OUTPUT_DIR, filename)
 
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(listings, f, indent=2)
-    
-    print(f"\nSaved {len(listings)} listings to {filepath}")
+
+    return filename
+
+def save_fetch_metadata(num_requests, num_listings):
+    if os.path.exists(FETCH_METADATA):
+        with open(FETCH_METADATA, "r") as f:
+            history = json.load(f)
+    else:
+        history = {"fetches": []}
+
+    history["fetches"].append({
+        "date": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "num_requests": num_requests,
+        "num_listings": num_listings
+    })
+
+    os.makedirs(os.path.dirname(FETCH_METADATA), exist_ok=True)
+    with open(FETCH_METADATA, "r") as f:
+        json.dump(history, f, indent=4)
 
 def get_last_fetch():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    pattern = os.path.join(OUTPUT_DIR, "raw_active_listings_*.json")
-    files = glob.glob(pattern)
-    
-    if not files:
+    if not os.path.exists(FETCH_METADATA):
         return None
     
-    files.sort(reverse=True)
+    with open(FETCH_METADATA, "r") as f:
+        history = json.load(f)
 
-    filename = os.path.basename(files[0])
-    try:
-        date = filename.replace("raw_active_listings_", "").replace(".json", "")
-        return datetime.strptime(date, "%Y-%m-%d")
-    except ValueError:
+    fetches = history.get("fetches", [])
+    if not fetches:
         return None
+
+    return datetime.fromisoformat(fetches[-1]["date"])
 
 def can_fetch():
     last_fetch_date = get_last_fetch()
@@ -137,16 +153,17 @@ def can_fetch():
     
     if current_date <= api_reset_date:
         return False
+    
     return True
 
 def main():
     api_key = load_api_key()
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(LISTINGS_OUTPUT_DIR, exist_ok=True)
 
     total_requests_used = 0
     
-    # # fetch active listings
-    active_listings, active_requests = fetch_by_status(
+    # fetch active listings
+    active_listings, active_requests = fetch_all(
         api_key, 
         status="Active", 
         requests_used=total_requests_used
@@ -154,8 +171,8 @@ def main():
     total_requests_used += active_requests
     save_listings(active_listings, status="Active")
     
-    # # fetch inactive listings with remaining quota
-    inactive_listings, inactive_requests = fetch_by_status(
+    # fetch inactive listings with remaining quota
+    inactive_listings, inactive_requests = fetch_all(
         api_key,
         status="Inactive",
         requests_used=total_requests_used
@@ -163,6 +180,7 @@ def main():
     total_requests_used += inactive_requests
     save_listings(inactive_listings, status="Inactive")
 
+    save_fetch_metadata(total_requests_used, len(active_listings) + len(inactive_listings))
     print(f"Total requests used: {total_requests_used}/{MAX_REQUESTS}")
     print(f"Active listings: {len(active_listings)}")
     print(f"Inactive listings: {len(inactive_listings)}")
@@ -171,4 +189,4 @@ if __name__ == "__main__":
     if can_fetch():
         main()
     else:
-        print("Data was fetched within the last month. Please wait until the API rate limit resets.")
+        print("The maximum number of requests in the current billing period have been used. Please wait until the API rate limit resets.")

@@ -13,6 +13,7 @@ build/
 data/raw/
 data/processed/
 data/features/
+data/.fetch_history.json
 
 # Models
 models/*.pkl
