@@ -17,6 +17,7 @@ data/.fetch_history.json
 
 # Models
 models/*.pkl
+models/*.json
 
 # Distribution / packaging
 .Python
