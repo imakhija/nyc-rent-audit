@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from fetch_listings import get_last_fetch
+from scripts.fetch_listings import get_last_fetch
 import joblib
 import json
 

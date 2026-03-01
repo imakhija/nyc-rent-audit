@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import os
-from fetch_listings import get_last_fetch
+from scripts.fetch_listings import get_last_fetch
 from pathlib import Path
 
 CURR_FETCH_DATE = get_last_fetch().strftime("%Y-%m")

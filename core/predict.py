@@ -1,8 +1,9 @@
 import joblib
 import numpy as np
 import pandas as pd
-from fetch_listings import get_last_fetch
+from scripts.fetch_listings import get_last_fetch
 import json
+import os
 
 CURR_FETCH_DATE = get_last_fetch().strftime("%Y-%m")
 MARKET_WINDOWS = [30, 60, 90, 180]
@@ -12,25 +13,25 @@ def prepare_listing(listing, artifact):
 
     # impute square footage and year built, if missing
     df["squareFootage"] = (
-        listing.get("sqft")
-        if listing.get("sqft") is not None
+        listing.get("squareFootage")
+        if listing.get("squareFootage") is not None
         else artifact["global_sqft_median"]
     )
 
     df["yearBuilt"] = (
-        listing.get("year_built")
-        if listing.get("year_built") is not None
+        listing.get("yearBuilt")
+        if listing.get("yearBuilt") is not None
         else artifact["global_year_built_median"]
     )
 
     # encode zip code
     df["zipCodeEncoded"] = (
-        df["zip_code"]
+        df["zipCode"]
         .map(artifact["mean_rent_by_zip"])
         .fillna(artifact["global_rent_mean"])
     )
 
-    df.drop(columns=["zip_code"], inplace=True)
+    df.drop(columns=["zipCode"], inplace=True)
 
     df = df[artifact["features"]]
     return df
@@ -64,18 +65,8 @@ def predict_all(listing):
 
     for w in MARKET_WINDOWS:
         model_path = f"models/rf-model_{w}d_{CURR_FETCH_DATE}.pkl"
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model not found: {model_path}")
         res[w] = predict_rent(listing, model_path)
 
     return res
-
-if __name__ == "__main__":
-    listing = {
-        "bedrooms": 2,
-        "bathrooms": 1,
-        "sqft": 420,
-        "zip_code": 10009,
-        "year_built": 1900,
-        "rent": 4230
-    }
-
-    print(json.dumps(predict_all(listing), indent=4))
