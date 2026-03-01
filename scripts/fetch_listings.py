@@ -5,7 +5,6 @@ import time
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import json
-import glob
 
 API_BASE_URL = "https://api.rentcast.io/v1/listings/rental/long-term"
 LISTINGS_OUTPUT_DIR = "data/raw"
@@ -156,7 +155,7 @@ def can_fetch():
     
     return True
 
-def main():
+def fetch_listings():
     api_key = load_api_key()
     os.makedirs(LISTINGS_OUTPUT_DIR, exist_ok=True)
 
@@ -187,6 +186,6 @@ def main():
 
 if __name__ == "__main__":
     if can_fetch():
-        main()
+        fetch_listings()
     else:
         print("The maximum number of requests in the current billing period have been used. Please wait until the API rate limit resets.")
