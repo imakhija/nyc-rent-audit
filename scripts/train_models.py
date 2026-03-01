@@ -65,29 +65,31 @@ def train_model_by_window(df, window):
     print(f"RMSE (log): {rmse:.3f}")
     print(f"R²: {r2:.3f}")
 
-    return model, mean_by_zip, global_mean, {"rmse": rmse, "r2": r2}
+    return model, mean_by_zip, global_mean, {"rmse": rmse, "r2": r2}, X_train_enc.columns.tolist()
 
 def train_models():
     df = pd.read_parquet(Path(f"data/processed/listings_{CURR_FETCH_DATE}.parquet"))
+    
+    global_sqft_median = df["squareFootage"].median()
+    global_year_built_median = df["yearBuilt"].median()
 
     for w in MARKET_WINDOWS:
-        model, mean_by_zip, global_mean, metrics = train_model_by_window(df, w)
+        model, mean_by_zip, global_mean, metrics, features = train_model_by_window(df, w)
         
         model_path = MODELS_DIR / f"rf-model_{w}d_{CURR_FETCH_DATE}.pkl"
-        meta_path = MODELS_DIR / f"rf-model_{w}d_meta_{CURR_FETCH_DATE}.json"
 
-        joblib.dump(model, model_path)
-
-        metadata = {
-            "window_days": w,
+        artifact = {
+            "model": model,
+            "window": w,
+            "metrics": metrics,
+            "features": features,
             "global_rent_mean": global_mean,
-            "mean_rent_by_zip": mean_by_zip.to_dict(),
-            "metrics": metrics
+            "global_sqft_median": global_sqft_median,
+            "global_year_built_median": global_year_built_median,
+            "mean_rent_by_zip": mean_by_zip.to_dict()
         }
 
-        with open(meta_path, "w") as f:
-            json.dump(metadata, f)
-
+        joblib.dump(artifact, model_path)
         print(f"Saved {model_path.name}")
 
 if __name__ == "__main__":
