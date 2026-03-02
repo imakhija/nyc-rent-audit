@@ -1,10 +1,14 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from core.predict import predict_all
 from threading import Thread
 from scripts.refresh_pipeline import run_pipeline
 from scripts.fetch_listings import can_fetch
 
 app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return render_template("home.html")
 
 @app.route("/predict", methods=["POST"])
 def predict():
